@@ -1,0 +1,211 @@
+// Prisma schema — Rental Management System
+// Phase 4: Database Schema (design only — TIDAK menjalankan migration/mengubah DB).
+// Referensi: docs/database/erd.md, docs/business-rules/system-rules.md
+//
+// Catatan [TBD]: field/aturan yang belum diputuskan oleh pemilik/keluarga ditandai
+// eksplisit di bawah. Jangan mengisi/mengarang nilai bisnis untuk item tersebut.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum UserRole {
+  OWNER
+  // [TBD] Role tambahan (mis. ADMIN/STAFF) menunggu keputusan bisnis.
+  // Lihat docs/architecture/system-architecture.md §3 dan
+  // docs/decisions/architecture-decisions.md.
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  OCCUPIED
+  UNDER_MAINTENANCE
+  // [TBD] Status tambahan (jika ada) menunggu keputusan bisnis.
+}
+
+enum ContractStatus {
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  RENEWED
+  // [TBD] Aturan transisi antar-status (state machine) belum ditentukan.
+}
+
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  LATE
+  // [TBD] Daftar status final & aturan denda keterlambatan belum ditentukan.
+}
+
+enum MaintenanceStatus {
+  REPORTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+// ─────────────────────────────────────────────────────────────
+// MODELS
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reportedMaintenances Maintenance[] @relation("MaintenanceReportedBy")
+
+  @@map("users")
+}
+
+model Property {
+  id        Int            @id @default(autoincrement())
+  code      String         @unique // mis. "RUMAH-01" .. "RUMAH-09"
+  name      String
+  address   String         @db.Text
+  status    PropertyStatus @default(AVAILABLE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  contracts    Contract[]
+  maintenances Maintenance[]
+  expenses     Expense[]
+  parkings     Parking[]
+
+  @@map("properties")
+}
+
+model Tenant {
+  id             Int      @id @default(autoincrement())
+  fullName       String
+  phone          String
+  email          String? // [TBD] apakah wajib diisi & unique
+  identityNumber String? // [TBD] nomor KTP — apakah wajib & unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Prinsip: Tenant TIDAK memiliki FK langsung ke Property.
+  // Relasi ke Property hanya melalui Contract.
+  contracts Contract[]
+  parkings  Parking[]
+
+  @@map("tenants")
+}
+
+model Contract {
+  id         Int            @id @default(autoincrement())
+  propertyId Int
+  tenantId   Int
+  startDate  DateTime
+  endDate    DateTime
+  rentAmount Decimal        @db.Decimal(12, 2)
+  status     ContractStatus @default(ACTIVE)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  // Renewal chain: kontrak baru menunjuk ke kontrak sebelumnya.
+  // History TIDAK PERNAH ditimpa — renewal = INSERT record baru.
+  previousContractId Int?      @unique
+  previousContract   Contract? @relation("ContractRenewal", fields: [previousContractId], references: [id])
+  renewedInto        Contract? @relation("ContractRenewal")
+
+  property Property  @relation(fields: [propertyId], references: [id])
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  payments Payment[]
+
+  // Catatan constraint [TBD — enforcement level]:
+  // "Satu Property hanya boleh memiliki satu Active Contract" TIDAK dapat
+  // dinyatakan sebagai partial unique index di MySQL/Prisma secara native.
+  // Aturan ini WAJIB ditegakkan di application/service layer (backend) saat
+  // membuat/mengaktifkan Contract. Index di bawah hanya untuk performa query,
+  // bukan penegak constraint tersebut.
+  @@index([propertyId, status])
+  @@index([tenantId])
+  @@map("contracts")
+}
+
+model Payment {
+  id          Int           @id @default(autoincrement())
+  contractId  Int
+  amount      Decimal       @db.Decimal(12, 2)
+  paymentDate DateTime
+  method      String? // [TBD] daftar metode pembayaran final
+  status      PaymentStatus @default(PAID)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@index([contractId])
+  @@map("payments")
+}
+
+model Maintenance {
+  id           Int               @id @default(autoincrement())
+  propertyId   Int
+  reportedById Int?
+  description  String            @db.Text
+  status       MaintenanceStatus @default(REPORTED)
+  reportedAt   DateTime          @default(now())
+  completedAt  DateTime?
+  updatedAt    DateTime          @updatedAt
+
+  property   Property  @relation(fields: [propertyId], references: [id])
+  reportedBy User?     @relation("MaintenanceReportedBy", fields: [reportedById], references: [id])
+  expenses   Expense[]
+
+  @@index([propertyId])
+  @@map("maintenances")
+}
+
+model Expense {
+  id            Int      @id @default(autoincrement())
+  propertyId    Int
+  maintenanceId Int? // opsional — hanya diisi jika expense berasal dari maintenance
+  category      String // [TBD] kategori final (pajak, iuran, dll.) — belum jadi enum
+  amount        Decimal  @db.Decimal(12, 2)
+  expenseDate   DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  property    Property     @relation(fields: [propertyId], references: [id])
+  maintenance Maintenance? @relation(fields: [maintenanceId], references: [id])
+
+  @@index([propertyId])
+  @@index([maintenanceId])
+  @@map("expenses")
+}
+
+model Parking {
+  id          Int      @id @default(autoincrement())
+  // [TBD] Relasi otoritatif Parking masih belum diputuskan:
+  // apakah terikat ke Property (slot fisik), ke Tenant (kendaraan penyewa),
+  // atau keduanya. Untuk sementara dibuat nullable/opsional agar tidak
+  // mengarang keputusan bisnis. Lihat docs/database/erd.md §3.8.
+  propertyId  Int?
+  tenantId    Int?
+  vehicleType String? // [TBD] enum final jenis kendaraan
+  plateNumber String? // [TBD] apakah wajib unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property Property? @relation(fields: [propertyId], references: [id])
+  tenant   Tenant?   @relation(fields: [tenantId], references: [id])
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@map("parkings")
+}
