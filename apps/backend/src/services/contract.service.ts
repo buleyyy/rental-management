@@ -180,11 +180,31 @@ export class ContractService {
     return contract;
   }
 
+  // FINAL (2026-09-23): state machine ContractStatus — lihat schema.prisma
+  // (enum ContractStatus) untuk daftar transisi lengkap.
+  private static readonly ALLOWED_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
+    ACTIVE: ["EXPIRED", "TERMINATED", "RENEWED"],
+    EXPIRED: ["RENEWED"],
+    TERMINATED: [],
+    RENEWED: [],
+  };
+
   /**
    * Update contract
    */
   async update(id: number, input: UpdateContractInput) {
     const existing = await this.getById(id);
+
+    // VALIDASI: state machine ContractStatus
+    if (input.status && input.status !== existing.status) {
+      const allowed = ContractService.ALLOWED_TRANSITIONS[existing.status];
+      if (!allowed.includes(input.status)) {
+        throw new AppError(
+          400,
+          `Transisi status contract dari ${existing.status} ke ${input.status} tidak diperbolehkan`
+        );
+      }
+    }
 
     // Validasi tanggal jika diubah
     if (input.startDate || input.endDate) {

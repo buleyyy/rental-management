@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PaymentStatus } from "@prisma/client";
+import { PaymentStatus, PaymentMethod } from "@prisma/client";
 
 export const createPaymentSchema = z.object({
   body: z.object({
@@ -11,7 +11,7 @@ export const createPaymentSchema = z.object({
     paymentDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
       message: "Format tanggal pembayaran tidak valid",
     }),
-    method: z.string().max(100).optional(),
+    method: z.nativeEnum(PaymentMethod).optional(),
     status: z.nativeEnum(PaymentStatus).optional(),
   }),
 });
@@ -30,7 +30,7 @@ export const updatePaymentSchema = z.object({
       .string()
       .refine((val) => !isNaN(Date.parse(val)))
       .optional(),
-    method: z.string().max(100).optional(),
+    method: z.nativeEnum(PaymentMethod).optional(),
     status: z.nativeEnum(PaymentStatus).optional(),
   }),
 });

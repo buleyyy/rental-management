@@ -1,33 +1,73 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
-import { Property, PaginatedResponse } from "@/lib/types";
+import { useConfirmDelete } from "@/lib/useConfirmDelete";
+import { Property, PaginatedResponse } from "@rental/types";
+import {
+  Button,
+  Badge,
+  Modal,
+  ConfirmDialog,
+  Table,
+  PageHeader,
+  SearchInput,
+  StatCard,
+  FormField,
+  fieldClass,
+  textareaClass,
+} from "@rental/ui";
+
+const STATUS_META: Record<Property["status"], { label: string; badge: "success" | "neutral" | "warning" | "info" }> = {
+  AVAILABLE: { label: "Tersedia", badge: "info" },
+  OCCUPIED: { label: "Terisi", badge: "success" },
+  UNDER_MAINTENANCE: { label: "Pemeliharaan", badge: "warning" },
+  RESERVED: { label: "Dipesan", badge: "info" },
+  INACTIVE: { label: "Nonaktif", badge: "neutral" },
+};
+
+const STATUS_TABS: { value: "ALL" | Property["status"]; label: string }[] = [
+  { value: "ALL", label: "Semua" },
+  { value: "OCCUPIED", label: "Terisi" },
+  { value: "AVAILABLE", label: "Tersedia" },
+  { value: "UNDER_MAINTENANCE", label: "Pemeliharaan" },
+  { value: "RESERVED", label: "Dipesan" },
+  { value: "INACTIVE", label: "Nonaktif" },
+];
+
+function formatIDR(value: number | string) {
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  return `Rp${Math.round(n).toLocaleString("id-ID")}`;
+}
+
+const EMPTY_FORM = {
+  code: "",
+  name: "",
+  address: "",
+  rentAmount: "",
+  status: "AVAILABLE" as Property["status"],
+};
 
 export default function PropertiesPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
-  const [formData, setFormData] = useState({
-    code: "",
-    name: "",
-    address: "",
-    status: "AVAILABLE" as Property["status"],
-  });
+  const [editing, setEditing] = useState<Property | null>(null);
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusTab, setStatusTab] = useState<"ALL" | Property["status"]>("ALL");
 
   const fetchProperties = async () => {
     try {
       setLoading(true);
-      const data = await apiFetch<PaginatedResponse<Property>>("/properties", {
-        params: { limit: 100 },
-      });
+      setLoadError("");
+      const data = await apiFetch<PaginatedResponse<Property>>("/properties", { params: { limit: 100 } });
       setProperties(data.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load properties");
+      setLoadError(err instanceof Error ? err.message : "Gagal memuat properti");
     } finally {
       setLoading(false);
     }
@@ -37,276 +77,325 @@ export default function PropertiesPage() {
     fetchProperties();
   }, []);
 
-  const handleOpenModal = (property?: Property) => {
-    if (property) {
-      setEditingProperty(property);
-      setFormData({
-        code: property.code,
-        name: property.name,
-        address: property.address,
-        status: property.status,
-      });
-    } else {
-      setEditingProperty(null);
-      setFormData({
-        code: "",
-        name: "",
-        address: "",
-        status: "AVAILABLE",
-      });
-    }
+  const del = useConfirmDelete<Property>("/properties", fetchProperties);
+
+  const openCreate = () => {
+    setEditing(null);
+    setFormData(EMPTY_FORM);
     setFormError("");
     setShowModal(true);
   };
 
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setEditingProperty(null);
+  const openEdit = (p: Property) => {
+    setEditing(p);
+    setFormData({
+      code: p.code,
+      name: p.name,
+      address: p.address,
+      rentAmount: Number(p.rentAmount) > 0 ? String(Math.round(Number(p.rentAmount))) : "",
+      status: p.status,
+    });
     setFormError("");
+    setShowModal(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError("");
     setSubmitting(true);
-
+    setFormError("");
     try {
-      if (editingProperty) {
-        await apiFetch(`/properties/${editingProperty.id}`, {
-          method: "PUT",
-          body: JSON.stringify(formData),
-        });
+      const body = {
+        code: formData.code.trim(),
+        name: formData.name.trim(),
+        address: formData.address.trim(),
+        rentAmount: formData.rentAmount ? Number(formData.rentAmount) : 0,
+        status: formData.status,
+      };
+      if (editing) {
+        await apiFetch(`/properties/${editing.id}`, { method: "PUT", body: JSON.stringify(body) });
       } else {
-        await apiFetch("/properties", {
-          method: "POST",
-          body: JSON.stringify(formData),
-        });
+        await apiFetch("/properties", { method: "POST", body: JSON.stringify(body) });
       }
+      setShowModal(false);
       await fetchProperties();
-      handleCloseModal();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to save property");
+      setFormError(err instanceof Error ? err.message : "Gagal menyimpan properti");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus property ini?")) return;
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return properties.filter((p) => {
+      const activeContract = p.contracts?.[0];
+      const matchesStatus = statusTab === "ALL" || p.status === statusTab;
+      const matchesSearch =
+        !term ||
+        p.code.toLowerCase().includes(term) ||
+        p.name.toLowerCase().includes(term) ||
+        p.address.toLowerCase().includes(term) ||
+        activeContract?.tenant?.fullName.toLowerCase().includes(term);
+      return matchesStatus && matchesSearch;
+    });
+  }, [properties, search, statusTab]);
 
-    try {
-      await apiFetch(`/properties/${id}`, {
-        method: "DELETE",
-      });
-      await fetchProperties();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete property");
-    }
-  };
-
-  const getStatusBadge = (status: Property["status"]) => {
-    const styles = {
-      AVAILABLE: "bg-green-100 text-green-800",
-      OCCUPIED: "bg-blue-100 text-blue-800",
-      UNDER_MAINTENANCE: "bg-yellow-100 text-yellow-800",
-    };
-    return (
-      <span
-        className={`px-2 py-1 text-xs font-medium rounded-full ${styles[status]}`}
-      >
-        {status}
-      </span>
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    );
-  }
+  const total = properties.length;
+  const occupiedCount = properties.filter((p) => p.status === "OCCUPIED").length;
+  const availableCount = properties.filter((p) => p.status === "AVAILABLE").length;
+  const maintenanceCount = properties.filter((p) => p.status === "UNDER_MAINTENANCE").length;
+  const noRentCount = properties.filter((p) => !(Number(p.rentAmount) > 0)).length;
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Properties</h1>
-        <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+      <PageHeader
+        title="Manajemen Properti"
+        subtitle="Kelola unit sewa, tarif bulanan, dan status hunian."
+        actions={<Button onClick={openCreate}>+ Tambah Properti Baru</Button>}
+      />
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="Total unit" value={total} secondary="Seluruh unit terdaftar" />
+        <StatCard
+          label="Unit terisi"
+          value={occupiedCount}
+          secondary={`${total > 0 ? Math.round((occupiedCount / total) * 100) : 0}% okupansi`}
+        />
+        <StatCard label="Unit tersedia" value={availableCount} secondary="Siap huni" />
+        <StatCard label="Dalam pemeliharaan" value={maintenanceCount} secondary="Belum bisa disewakan" />
+      </div>
+
+      {loadError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 text-sm text-error bg-error-bg border border-error-border rounded-lg px-4 py-3"
         >
-          + Add Property
-        </button>
-      </div>
-
-      {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error}</p>
+          <span>{loadError}</span>
+          <Button variant="secondary" size="sm" onClick={fetchProperties}>
+            Coba lagi
+          </Button>
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Code
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Address
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {properties.map((property) => (
-              <tr key={property.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {property.code}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {property.name}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  {property.address}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  {getStatusBadge(property.status)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                  <button
-                    onClick={() => handleOpenModal(property)}
-                    className="text-blue-600 hover:text-blue-900"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(property.id)}
-                    className="text-red-600 hover:text-red-900"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {!loading && noRentCount > 0 && (
+        <p className="text-sm text-ink-muted bg-surface-muted border border-border rounded-lg px-4 py-3">
+          {noRentCount} unit belum punya tarif sewa. Order untuk unit tanpa tarif tidak bisa disetujui. Klik Edit untuk mengisinya.
+        </p>
+      )}
 
-        {properties.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            Belum ada property. Klik "Add Property" untuk menambahkan.
-          </div>
-        )}
+      <div className="bg-surface p-4 rounded-xl border border-border flex flex-col gap-3">
+        <SearchInput
+          placeholder="Cari kode unit, nama, alamat, atau nama penyewa..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="flex items-center gap-2 overflow-x-auto pt-3 border-t border-border">
+          {STATUS_TABS.map((tab) => {
+            const count = tab.value === "ALL" ? total : properties.filter((p) => p.status === tab.value).length;
+            const active = statusTab === tab.value;
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setStatusTab(tab.value)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex items-center gap-2 transition-colors ${
+                  active ? "bg-primary text-primary-foreground" : "text-ink-muted hover:bg-surface-muted"
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                    active ? "bg-white/20 text-white" : "bg-surface-muted text-ink-muted"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {editingProperty ? "Edit Property" : "Add Property"}
-            </h2>
-
-            {formError && (
-              <div className="rounded-md bg-red-50 p-4 mb-4">
-                <p className="text-sm text-red-800">{formError}</p>
+      <Table<Property>
+        data={filtered}
+        keyExtractor={(p) => p.id}
+        loading={loading}
+        emptyMessage={
+          properties.length === 0
+            ? "Belum ada properti. Klik \"Tambah Properti Baru\" untuk memulai."
+            : "Tidak ada properti yang cocok."
+        }
+        columns={[
+          {
+            header: "Kode & Nama Properti",
+            accessor: (p) => (
+              <div className="flex flex-col">
+                <span className="font-medium text-ink text-sm">{p.name}</span>
+                <span className="text-xs text-ink-muted">{p.code}</span>
               </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Code *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.code}
-                  onChange={(e) =>
-                    setFormData({ ...formData, code: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+            ),
+          },
+          {
+            header: "Alamat / Lokasi",
+            accessor: (p) => <span className="text-ink-muted text-sm">{p.address}</span>,
+          },
+          {
+            header: "Status Hunian",
+            accessor: (p) => (
+              <Badge variant={STATUS_META[p.status]?.badge || "neutral"}>
+                {STATUS_META[p.status]?.label || p.status}
+              </Badge>
+            ),
+          },
+          {
+            header: "Penyewa Aktif",
+            accessor: (p) => {
+              const contract = p.contracts?.[0];
+              if (!contract || !contract.tenant) {
+                return <span className="text-ink-faint text-xs">Siap huni</span>;
+              }
+              return (
+                <div className="flex flex-col">
+                  <span className="font-medium text-ink text-sm">{contract.tenant.fullName}</span>
+                  <span className="text-xs text-ink-muted">{contract.tenant.phone}</span>
+                </div>
+              );
+            },
+          },
+          {
+            header: "Tarif Sewa",
+            align: "right",
+            accessor: (p) =>
+              Number(p.rentAmount) > 0 ? (
+                <div className="flex flex-col items-end">
+                  <span className="font-medium text-ink text-sm">{formatIDR(p.rentAmount)}</span>
+                  <span className="text-xs text-ink-muted">/ bulan</span>
+                </div>
+              ) : (
+                <span className="text-xs text-warning">Belum diatur</span>
+              ),
+          },
+          {
+            header: "Aksi",
+            align: "right",
+            accessor: (p) => (
+              <div className="flex items-center justify-end gap-4">
+                <Button variant="link-blue" className="text-sm font-medium" onClick={() => openEdit(p)}>
+                  Edit
+                </Button>
+                <Button variant="link-red" className="text-sm font-medium" onClick={() => del.request(p)}>
+                  Hapus
+                </Button>
               </div>
+            ),
+          },
+        ]}
+      />
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+      <Modal
+        isOpen={showModal}
+        onClose={() => !submitting && setShowModal(false)}
+        title={editing ? "Edit Properti" : "Tambah Properti Baru"}
+        description="Lengkapi detail properti, tarif, dan status operasional."
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField label="Kode unit" required>
+              <input
+                type="text"
+                required
+                maxLength={50}
+                placeholder="Contoh: A1, B1"
+                value={formData.code}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                className={fieldClass}
+              />
+            </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Address *
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Status
-                </label>
-                <select
-                  value={formData.status}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      status: e.target.value as Property["status"],
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="AVAILABLE">AVAILABLE</option>
-                  <option value="OCCUPIED">OCCUPIED</option>
-                  <option value="UNDER_MAINTENANCE">UNDER_MAINTENANCE</option>
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </form>
+            <FormField label="Nama properti" required>
+              <input
+                type="text"
+                required
+                maxLength={255}
+                placeholder="Contoh: Rumah Tipe A"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className={fieldClass}
+              />
+            </FormField>
           </div>
-        </div>
-      )}
+
+          <FormField label="Alamat / deskripsi fisik" required>
+            <textarea
+              required
+              rows={3}
+              placeholder="Alamat lengkap, dimensi bangunan, atau keterangan..."
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              className={textareaClass}
+            />
+          </FormField>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              label="Tarif sewa (Rp / bulan)"
+              helperText="Dipakai sebagai harga pada order baru. Wajib lebih dari 0 agar order bisa disetujui."
+            >
+              <input
+                type="number"
+                min={0}
+                placeholder="1800000"
+                value={formData.rentAmount}
+                onChange={(e) => setFormData({ ...formData, rentAmount: e.target.value })}
+                className={fieldClass}
+              />
+            </FormField>
+
+            <FormField label="Status hunian">
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as Property["status"] })}
+                className={fieldClass}
+              >
+                {Object.entries(STATUS_META).map(([value, meta]) => (
+                  <option key={value} value={value}>
+                    {meta.label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+
+          {formError && (
+            <p role="alert" className="text-sm text-error bg-error-bg border border-error-border rounded-lg px-3 py-2">
+              {formError}
+            </p>
+          )}
+
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-border">
+            <Button type="button" variant="secondary" onClick={() => setShowModal(false)} disabled={submitting}>
+              Batal
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Menyimpan..." : editing ? "Simpan Perubahan" : "Simpan Properti"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={!!del.target}
+        title="Hapus properti?"
+        message={
+          del.target
+            ? `Unit ${del.target.code} (${del.target.name}) akan dihapus permanen. Unit dengan kontrak aktif tidak bisa dihapus.`
+            : ""
+        }
+        loading={del.busy}
+        error={del.error}
+        onConfirm={del.confirm}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }

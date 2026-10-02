@@ -6,6 +6,7 @@ interface CreatePropertyInput {
   code: string;
   name: string;
   address: string;
+  rentAmount?: number;
   status?: PropertyStatus;
 }
 
@@ -13,6 +14,7 @@ interface UpdatePropertyInput {
   code?: string;
   name?: string;
   address?: string;
+  rentAmount?: number;
   status?: PropertyStatus;
 }
 
@@ -104,6 +106,8 @@ export class PropertyService {
         code: input.code,
         name: input.name,
         address: input.address,
+        // Jika tidak dikirim, pakai default kolom di database
+        ...(input.rentAmount !== undefined && { rentAmount: input.rentAmount }),
         status: input.status ?? "AVAILABLE",
       },
     });

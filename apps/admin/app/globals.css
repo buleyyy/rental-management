@@ -1,26 +1,102 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Komponen bersama ada di packages/ui (di luar folder app ini), jadi harus
+ * didaftarkan agar Tailwind ikut memindai class-nya (Table, Modal, StatCard, dst).
+ */
+@source "../../../packages/ui";
+
+/**
+ * Design tokens.
+ * Keep colors/radii here as the single source of truth — do not
+ * hardcode ad-hoc hex values in page components.
+ */
+@theme {
+  /* Typography */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Surfaces */
+  --color-background: #f8f9ff;
+  --color-surface: #ffffff;
+  --color-surface-muted: #eff4ff;
+  --color-surface-subtle: #e5eeff;
+  --color-surface-strong: #dce9ff;
+
+  /* Text */
+  --color-ink: #0b1c30;
+  --color-ink-muted: #515f74;
+  --color-ink-faint: #76777d;
+
+  /* Borders */
+  --color-border: #e1e5f0;
+  --color-border-strong: #c6c6cd;
+
+  /* Brand */
+  --color-primary: #000000;
+  --color-primary-foreground: #ffffff;
+
+  /* Semantic status */
+  --color-success: #069669;
+  --color-success-bg: #d7f5e9;
+  --color-success-border: #a7e8cf;
+
+  --color-warning: #b45309;
+  --color-warning-bg: #fef3d9;
+  --color-warning-border: #fde3a7;
+
+  --color-error: #ba1a1a;
+  --color-error-bg: #ffdad6;
+  --color-error-border: #ffb4ab;
+
+  --color-info: #3a485c;
+  --color-info-bg: #d5e3fd;
+  --color-info-border: #b9c7e0;
+
+  /* Radius */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  /* Type scale (dipakai komponen & halaman: text-title-md, text-body-md, dst) */
+  --text-display-lg: 1.75rem;
+  --text-display-lg--line-height: 2.25rem;
+  --text-headline-lg: 1.5rem;
+  --text-headline-lg--line-height: 2rem;
+  --text-headline-md: 1.25rem;
+  --text-headline-md--line-height: 1.75rem;
+  --text-headline-sm: 1.125rem;
+  --text-headline-sm--line-height: 1.5rem;
+  --text-title-md: 0.875rem;
+  --text-title-md--line-height: 1.25rem;
+  --text-body-md: 0.875rem;
+  --text-body-md--line-height: 1.25rem;
+  --text-body-sm: 0.75rem;
+  --text-body-sm--line-height: 1rem;
+  --text-label-md: 0.75rem;
+  --text-label-md--line-height: 1rem;
+
+  /*
+   * Alias token lama (gaya Material) -> palet ink/surface di atas.
+   * Sebagian halaman masih memakai nama ini. Untuk kode baru pakai
+   * ink / ink-muted / surface / surface-muted / border.
+   */
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-on-surface: #0b1c30;
+  --color-on-surface-variant: #515f74;
+  --color-outline: #76777d;
+  --color-outline-variant: #c6c6cd;
+  --color-on-primary: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #ba1a1a;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  body {
+    @apply bg-background text-ink antialiased;
+    font-feature-settings: "tnum" 1;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }

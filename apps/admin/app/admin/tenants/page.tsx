@@ -1,290 +1,261 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
-import { Tenant, PaginatedResponse } from "@/lib/types";
+import { useConfirmDelete } from "@/lib/useConfirmDelete";
+import { Tenant, PaginatedResponse } from "@rental/types";
+import {
+  Button,
+  Modal,
+  ConfirmDialog,
+  Table,
+  PageHeader,
+  StatCard,
+  FormField,
+  SearchInput,
+  fieldClass,
+} from "@rental/ui";
+
+const EMPTY_FORM = { fullName: "", phone: "", email: "", identityNumber: "" };
 
 export default function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
-  const [formData, setFormData] = useState({
-    fullName: "",
-    phone: "",
-    email: "",
-    identityNumber: "",
-  });
+  const [editing, setEditing] = useState<Tenant | null>(null);
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
 
-  const fetchTenants = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const data = await apiFetch<PaginatedResponse<Tenant>>("/tenants", {
-        params: { limit: 100 },
-      });
+      const data = await apiFetch<PaginatedResponse<Tenant>>("/tenants", { params: { limit: 100 } });
       setTenants(data.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load tenants");
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTenants();
+    fetchData();
   }, []);
 
-  const handleOpenModal = (tenant?: Tenant) => {
-    if (tenant) {
-      setEditingTenant(tenant);
-      setFormData({
-        fullName: tenant.fullName,
-        phone: tenant.phone,
-        email: tenant.email || "",
-        identityNumber: tenant.identityNumber || "",
-      });
-    } else {
-      setEditingTenant(null);
-      setFormData({
-        fullName: "",
-        phone: "",
-        email: "",
-        identityNumber: "",
-      });
-    }
+  const del = useConfirmDelete<Tenant>("/tenants", fetchData);
+
+  const openCreate = () => {
+    setEditing(null);
+    setFormData(EMPTY_FORM);
     setFormError("");
     setShowModal(true);
   };
 
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setEditingTenant(null);
+  const openEdit = (t: Tenant) => {
+    setEditing(t);
+    setFormData({
+      fullName: t.fullName,
+      phone: t.phone,
+      email: t.email || "",
+      identityNumber: t.identityNumber || "",
+    });
     setFormError("");
+    setShowModal(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError("");
     setSubmitting(true);
-
-    const payload = {
-      ...formData,
-      email: formData.email || undefined,
-      identityNumber: formData.identityNumber || undefined,
-    };
-
+    setFormError("");
     try {
-      if (editingTenant) {
-        await apiFetch(`/tenants/${editingTenant.id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
+      const body = {
+        fullName: formData.fullName.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
+        identityNumber: formData.identityNumber.trim(),
+      };
+      if (editing) {
+        await apiFetch(`/tenants/${editing.id}`, { method: "PUT", body: JSON.stringify(body) });
       } else {
-        await apiFetch("/tenants", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+        await apiFetch("/tenants", { method: "POST", body: JSON.stringify(body) });
       }
-      await fetchTenants();
-      handleCloseModal();
+      setShowModal(false);
+      await fetchData();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to save tenant");
+      setFormError(err instanceof Error ? err.message : "Gagal menyimpan penyewa");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus tenant ini?")) return;
-
-    try {
-      await apiFetch(`/tenants/${id}`, {
-        method: "DELETE",
-      });
-      await fetchTenants();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete tenant");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
-      </div>
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return tenants.filter(
+      (t) =>
+        !term ||
+        t.fullName.toLowerCase().includes(term) ||
+        t.phone.toLowerCase().includes(term) ||
+        (t.email && t.email.toLowerCase().includes(term)) ||
+        (t.identityNumber && t.identityNumber.toLowerCase().includes(term))
     );
-  }
+  }, [tenants, search]);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Tenants</h1>
-        <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-        >
-          + Add Tenant
-        </button>
+      <PageHeader
+        title="Manajemen Penyewa"
+        subtitle="Kelola identitas penyewa, data kontak, dan riwayat hunian."
+        actions={<Button onClick={openCreate}>+ Tambah Penyewa Baru</Button>}
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <StatCard label="Penyewa terdaftar" value={tenants.length} secondary="Penghuni aktif dan riwayat" />
+        <StatCard
+          label="Identitas terisi"
+          value={tenants.filter((t) => t.identityNumber).length}
+          secondary="Penyewa dengan nomor KTP"
+        />
       </div>
 
-      {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error}</p>
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Full Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Phone
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Email
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {tenants.map((tenant) => (
-              <tr key={tenant.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {tenant.fullName}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {tenant.phone}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {tenant.email || "-"}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                  <button
-                    onClick={() => handleOpenModal(tenant)}
-                    className="text-blue-600 hover:text-blue-900"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(tenant.id)}
-                    className="text-red-600 hover:text-red-900"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {tenants.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            Belum ada tenant. Klik "Add Tenant" untuk menambahkan.
-          </div>
-        )}
+      <div className="bg-surface p-4 rounded-xl border border-border">
+        <SearchInput
+          placeholder="Cari berdasarkan nama, telepon, email, atau nomor identitas..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {editingTenant ? "Edit Tenant" : "Add Tenant"}
-            </h2>
-
-            {formError && (
-              <div className="rounded-md bg-red-50 p-4 mb-4">
-                <p className="text-sm text-red-800">{formError}</p>
+      <Table<Tenant>
+        data={filtered}
+        keyExtractor={(t) => t.id}
+        loading={loading}
+        emptyMessage={
+          tenants.length === 0
+            ? "Belum ada penyewa. Klik \"Tambah Penyewa Baru\" atau setujui order masuk."
+            : "Tidak ada penyewa yang cocok."
+        }
+        columns={[
+          {
+            header: "Nama Lengkap",
+            accessor: (t) => (
+              <div className="flex flex-col">
+                <span className="font-medium text-ink text-sm">{t.fullName}</span>
+                <span className="text-xs text-ink-muted">{t.phone}</span>
               </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Full Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.fullName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, fullName: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+            ),
+          },
+          {
+            header: "Email",
+            accessor: (t) => <span className="text-sm text-ink-muted">{t.email || "—"}</span>,
+          },
+          {
+            header: "No. KTP / Identitas",
+            accessor: (t) => <span className="text-sm text-ink">{t.identityNumber || "—"}</span>,
+          },
+          {
+            header: "Aksi",
+            align: "right",
+            accessor: (t) => (
+              <div className="flex items-center justify-end gap-4">
+                <Button variant="link-blue" className="text-sm font-medium" onClick={() => openEdit(t)}>
+                  Edit
+                </Button>
+                <Button variant="link-red" className="text-sm font-medium" onClick={() => del.request(t)}>
+                  Hapus
+                </Button>
               </div>
+            ),
+          },
+        ]}
+      />
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Phone *
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+      <Modal
+        isOpen={showModal}
+        onClose={() => !submitting && setShowModal(false)}
+        title={editing ? "Edit Data Penyewa" : "Tambah Penyewa Baru"}
+        description="Lengkapi informasi kontak dan identitas penyewa."
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <FormField label="Nama lengkap" required>
+            <input
+              type="text"
+              className={fieldClass}
+              value={formData.fullName}
+              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+              placeholder="Contoh: Budi Santoso"
+              maxLength={255}
+              required
+            />
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+          <FormField label="Nomor telepon (WhatsApp)" required>
+            <input
+              type="tel"
+              className={fieldClass}
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              placeholder="Contoh: 081234567890"
+              maxLength={50}
+              required
+            />
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Identity Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.identityNumber}
-                  onChange={(e) =>
-                    setFormData({ ...formData, identityNumber: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+          <FormField label="Email" required>
+            <input
+              type="email"
+              className={fieldClass}
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="budi@example.com"
+              required
+            />
+          </FormField>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </form>
+          <FormField label="Nomor identitas (KTP)" required>
+            <input
+              type="text"
+              inputMode="numeric"
+              className={fieldClass}
+              value={formData.identityNumber}
+              onChange={(e) => setFormData({ ...formData, identityNumber: e.target.value })}
+              placeholder="16 digit nomor KTP"
+              maxLength={50}
+              required
+            />
+          </FormField>
+
+          {formError && (
+            <p role="alert" className="text-sm text-error bg-error-bg border border-error-border rounded-lg px-3 py-2">
+              {formError}
+            </p>
+          )}
+
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-border">
+            <Button type="button" variant="secondary" onClick={() => setShowModal(false)} disabled={submitting}>
+              Batal
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Menyimpan..." : editing ? "Simpan Perubahan" : "Simpan Penyewa"}
+            </Button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={!!del.target}
+        title="Hapus penyewa?"
+        message={
+          del.target
+            ? `Data ${del.target.fullName} akan dihapus permanen. Penyewa yang masih punya kontrak mungkin tidak bisa dihapus.`
+            : ""
+        }
+        loading={del.busy}
+        error={del.error}
+        onConfirm={del.confirm}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }

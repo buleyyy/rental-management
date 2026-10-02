@@ -1,23 +1,59 @@
 import { prisma } from "../config/prisma";
-import { PaymentStatus } from "@prisma/client";
+import { PaymentStatus, PaymentMethod } from "@prisma/client";
 import { AppError } from "../utils/AppError";
+import { calculateLateFee, computeDueDate } from "../utils/lateFee.util";
 
 interface CreatePaymentInput {
   contractId: number;
   amount: number;
   paymentDate: string;
-  method?: string;
+  method?: PaymentMethod;
   status?: PaymentStatus;
 }
 
 interface UpdatePaymentInput {
   amount?: number;
   paymentDate?: string;
-  method?: string;
+  method?: PaymentMethod;
   status?: PaymentStatus;
 }
 
 export class PaymentService {
+  // FINAL (2026-09-23): aturan denda keterlambatan — 1% dari rentAmount per
+  // hari terlambat (dihitung dari tanggal jatuh tempo), maksimal 20% dari
+  // rentAmount. Dipakai untuk menghitung denda tampilan (tidak disimpan
+  // sebagai kolom terpisah di database). Implementasi ada di
+  // `utils/lateFee.util.ts` (dipakai bareng oleh ReportService).
+  static readonly LATE_FEE_RATE_PER_DAY = 0.01;
+  static readonly LATE_FEE_MAX_RATE = 0.2;
+
+  /**
+   * Hitung denda keterlambatan untuk sebuah payment.
+   * @param rentAmount jumlah sewa per periode (dari Contract.rentAmount)
+   * @param dueDate tanggal jatuh tempo pembayaran
+   * @param paymentDate tanggal pembayaran aktual (atau hari ini jika belum dibayar)
+   */
+  calculateLateFee(rentAmount: number, dueDate: Date, paymentDate: Date): number {
+    return calculateLateFee(rentAmount, dueDate, paymentDate);
+  }
+
+  /**
+   * Tempel field `lateFee` (turunan, tidak disimpan di DB) ke sebuah payment
+   * yang sudah include relasi contract. Due date dihitung dari
+   * Contract.startDate (lihat asumsi di utils/lateFee.util.ts).
+   */
+  private withLateFee<T extends { amount: any; paymentDate: Date; contract: { rentAmount: any; startDate: Date } }>(
+    payment: T
+  ): T & { lateFee: number } {
+    const dueDate = computeDueDate(payment.contract.startDate, payment.paymentDate);
+    const lateFee = calculateLateFee(
+      Number(payment.contract.rentAmount),
+      dueDate,
+      payment.paymentDate
+    );
+    return { ...payment, lateFee };
+  }
+
   /**
    * Ambil semua payments dengan pagination & filter
    */
@@ -54,7 +90,7 @@ export class PaymentService {
     ]);
 
     return {
-      data: payments,
+      data: payments.map((p) => this.withLateFee(p)),
       meta: {
         page,
         limit,
@@ -84,7 +120,7 @@ export class PaymentService {
       throw new AppError(404, `Payment dengan ID ${id} tidak ditemukan`);
     }
 
-    return payment;
+    return this.withLateFee(payment);
   }
 
   /**
@@ -129,7 +165,7 @@ export class PaymentService {
       },
     });
 
-    return payment;
+    return this.withLateFee(payment);
   }
 
   /**
@@ -158,7 +194,7 @@ export class PaymentService {
       },
     });
 
-    return updated;
+    return this.withLateFee(updated);
   }
 
   /**

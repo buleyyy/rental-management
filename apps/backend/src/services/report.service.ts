@@ -1,5 +1,6 @@
 import { prisma } from "../config/prisma";
 import { AppError } from "../utils/AppError";
+import { calculateLateFee, computeDueDate } from "../utils/lateFee.util";
 
 export class ReportService {
   /**
@@ -78,6 +79,9 @@ export class ReportService {
 
     // 4. Identifikasi tenant/contract yang belum bayar periode tersebut
     // Logika: contract aktif yang TIDAK punya payment PAID di bulan ini
+    // Denda dihitung sebagai estimasi berjalan (belum tentu final, karena
+    // belum ada payment record) — asumsi due date lihat utils/lateFee.util.ts.
+    const today = new Date();
     const unpaidContracts = activeContracts
       .filter((contract) => {
         const hasPaidPayment = contract.payments.some(
@@ -85,22 +89,33 @@ export class ReportService {
         );
         return !hasPaidPayment;
       })
-      .map((contract) => ({
-        contractId: contract.id,
-        property: {
-          id: contract.property.id,
-          code: contract.property.code,
-          name: contract.property.name,
-        },
-        tenant: {
-          id: contract.tenant.id,
-          fullName: contract.tenant.fullName,
-          phone: contract.tenant.phone,
-        },
-        rentAmount: contract.rentAmount,
-        startDate: contract.startDate,
-        endDate: contract.endDate,
-      }));
+      .map((contract) => {
+        const dueDate = computeDueDate(contract.startDate, endDate < today ? endDate : today);
+        const referenceDate = today < dueDate ? dueDate : today;
+        const estimatedLateFee = calculateLateFee(
+          Number(contract.rentAmount),
+          dueDate,
+          referenceDate
+        );
+        return {
+          contractId: contract.id,
+          property: {
+            id: contract.property.id,
+            code: contract.property.code,
+            name: contract.property.name,
+          },
+          tenant: {
+            id: contract.tenant.id,
+            fullName: contract.tenant.fullName,
+            phone: contract.tenant.phone,
+          },
+          rentAmount: contract.rentAmount,
+          startDate: contract.startDate,
+          endDate: contract.endDate,
+          dueDate,
+          estimatedLateFee,
+        };
+      });
 
     return {
       period: {
@@ -117,23 +132,28 @@ export class ReportService {
         unpaidContractsCount: unpaidContracts.length,
         activeContractsCount: activeContracts.length,
       },
-      payments: payments.map((p) => ({
-        id: p.id,
-        amount: p.amount,
-        paymentDate: p.paymentDate,
-        status: p.status,
-        method: p.method,
-        contract: {
-          id: p.contract.id,
-          property: {
-            code: p.contract.property.code,
-            name: p.contract.property.name,
+      payments: payments.map((p) => {
+        const dueDate = computeDueDate(p.contract.startDate, p.paymentDate);
+        const lateFee = calculateLateFee(Number(p.contract.rentAmount), dueDate, p.paymentDate);
+        return {
+          id: p.id,
+          amount: p.amount,
+          paymentDate: p.paymentDate,
+          status: p.status,
+          method: p.method,
+          lateFee,
+          contract: {
+            id: p.contract.id,
+            property: {
+              code: p.contract.property.code,
+              name: p.contract.property.name,
+            },
+            tenant: {
+              fullName: p.contract.tenant.fullName,
+            },
           },
-          tenant: {
-            fullName: p.contract.tenant.fullName,
-          },
-        },
-      })),
+        };
+      }),
       unpaidContracts,
     };
   }

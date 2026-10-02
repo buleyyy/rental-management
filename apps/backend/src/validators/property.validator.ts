@@ -12,6 +12,11 @@ export const createPropertySchema = z.object({
       .min(1, "Nama wajib diisi")
       .max(255, "Nama maksimal 255 karakter"),
     address: z.string().min(1, "Alamat wajib diisi"),
+    rentAmount: z
+      .number()
+      .min(0, "Tarif sewa tidak boleh negatif")
+      .or(z.string().transform((val) => parseFloat(val)))
+      .optional(),
     status: z.nativeEnum(PropertyStatus).optional(),
   }),
 });
@@ -24,6 +29,11 @@ export const updatePropertySchema = z.object({
     code: z.string().min(1).max(50).optional(),
     name: z.string().min(1).max(255).optional(),
     address: z.string().min(1).optional(),
+    rentAmount: z
+      .number()
+      .min(0, "Tarif sewa tidak boleh negatif")
+      .or(z.string().transform((val) => parseFloat(val)))
+      .optional(),
     status: z.nativeEnum(PropertyStatus).optional(),
   }),
 });

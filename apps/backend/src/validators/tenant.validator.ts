@@ -10,8 +10,11 @@ export const createTenantSchema = z.object({
       .string()
       .min(1, "Nomor telepon wajib diisi")
       .max(50, "Nomor telepon maksimal 50 karakter"),
-    email: z.string().email("Format email tidak valid").optional(),
-    identityNumber: z.string().max(50).optional(),
+    email: z.string().email("Format email tidak valid").min(1, "Email wajib diisi"),
+    identityNumber: z
+      .string()
+      .min(1, "Nomor identitas (KTP) wajib diisi")
+      .max(50, "Nomor identitas maksimal 50 karakter"),
   }),
 });
 
@@ -22,8 +25,8 @@ export const updateTenantSchema = z.object({
   body: z.object({
     fullName: z.string().min(1).max(255).optional(),
     phone: z.string().min(1).max(50).optional(),
-    email: z.string().email("Format email tidak valid").optional(),
-    identityNumber: z.string().max(50).optional(),
+    email: z.string().email("Format email tidak valid").min(1).optional(),
+    identityNumber: z.string().min(1).max(50).optional(),
   }),
 });
 

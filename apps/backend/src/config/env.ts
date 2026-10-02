@@ -15,6 +15,8 @@ const envSchema = z.object({
     .transform((val) => parseInt(val, 10)),
   DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  JWT_SECRET: z.string().min(10, "JWT_SECRET wajib diisi dan minimal 10 karakter"),
+  JWT_EXPIRES_IN: z.string().default("7d"),
 });
 
 const parsed = envSchema.safeParse(process.env);

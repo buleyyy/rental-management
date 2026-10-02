@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "npx --yes kill-port 3000",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@rental/api-client": "*",
+    "@rental/types": "*",
+    "@rental/ui": "*",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",

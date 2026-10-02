@@ -4,5 +4,6 @@ import { SessionProvider } from "next-auth/react";
 import { ReactNode } from "react";
 
 export function Providers({ children }: { children: ReactNode }) {
-  return <SessionProvider>{children}</SessionProvider>;
+  // Tidak refetch session tiap kali tab difokuskan ulang (mengurangi request berulang)
+  return <SessionProvider refetchOnWindowFocus={false}>{children}</SessionProvider>;
 }

@@ -12,21 +12,29 @@ Sistem sederhana untuk mengelola 9 rumah kontrakan keluarga, meliputi data prope
 Next.js 16 · TypeScript · Tailwind CSS · Node.js · Express · Prisma · MySQL
 
 ## Status
-Tahap saat ini: **Phase 3 — Backend Setup** (struktur dasar Express + TypeScript + Prisma, belum ada fitur/CRUD/domain model).
+✅ **Phase 3 & 4 Complete** — Backend API fully functional dengan domain model lengkap, CRUD endpoints, dan laporan bulanan.
 
 ## Setup Backend (Development)
 
 ```bash
 cd backend
-cp .env.example .env   # lalu sesuaikan DATABASE_URL dengan MySQL lokal
+cp .env.example .env   # edit DATABASE_URL (default: mysql://root@localhost:3306/rental_management)
 npm install
 npm run prisma:generate
-npm run dev             # jalankan server dev (tsx watch)
+npm run prisma:migrate:dev  # buat database & run migration
+npm run dev                 # jalankan server dev (tsx watch)
 ```
 
-Verifikasi:
-- Build TypeScript: `npm run build` (output ke `backend/dist`)
-- Health check: `GET http://localhost:4000/api/health`
+Server berjalan di: `http://localhost:4000`
+
+**API Endpoints:**
+- Properties: `/api/properties`
+- Tenants: `/api/tenants`
+- Contracts: `/api/contracts`
+- Payments: `/api/payments`
+- Reports: `/api/reports/monthly?year=2026&month=9`
+
+Dokumentasi lengkap: `docs/API.md`
 
 ## Setup Frontend
 Belum tersedia — akan ditambahkan pada phase berikutnya.

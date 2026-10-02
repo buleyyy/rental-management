@@ -1,41 +1,77 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
-import { Payment, Contract, PaginatedResponse } from "@/lib/types";
+import { useConfirmDelete } from "@/lib/useConfirmDelete";
+import { Payment, Contract, PaginatedResponse } from "@rental/types";
+import {
+  Button,
+  Badge,
+  Modal,
+  ConfirmDialog,
+  Table,
+  PageHeader,
+  StatCard,
+  FormField,
+  SearchInput,
+  fieldClass,
+} from "@rental/ui";
+
+function formatIDR(value: number | string) {
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  return `Rp${Math.round(n).toLocaleString("id-ID")}`;
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+const today = () => new Date().toISOString().split("T")[0];
+
+const STATUS_META: Record<Payment["status"], { label: string; variant: "success" | "warning" | "danger" }> = {
+  PAID: { label: "Lunas", variant: "success" },
+  PARTIAL: { label: "Sebagian", variant: "warning" },
+  LATE: { label: "Terlambat", variant: "danger" },
+  UNPAID: { label: "Belum bayar", variant: "danger" },
+};
+
+const METHOD_LABEL: Record<NonNullable<Payment["method"]>, string> = {
+  BANK_TRANSFER: "Transfer bank",
+  CASH: "Tunai",
+  E_WALLET: "E-wallet",
+  OTHER: "Lainnya",
+};
+
+const EMPTY_FORM = {
+  contractId: "",
+  amount: "",
+  paymentDate: today(),
+  method: "BANK_TRANSFER" as NonNullable<Payment["method"]>,
+  status: "PAID" as Payment["status"],
+};
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
-  const [formData, setFormData] = useState({
-    contractId: "",
-    amount: "",
-    paymentDate: "",
-    method: "",
-    status: "PAID" as Payment["status"],
-  });
+  const [editing, setEditing] = useState<Payment | null>(null);
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [paymentsData, contractsData] = await Promise.all([
-        apiFetch<PaginatedResponse<Payment>>("/payments", {
-          params: { limit: 100 },
-        }),
-        apiFetch<PaginatedResponse<Contract>>("/contracts", {
-          params: { status: "ACTIVE", limit: 100 },
-        }),
+      const [payData, conData] = await Promise.all([
+        apiFetch<PaginatedResponse<Payment>>("/payments", { params: { limit: 100 } }),
+        apiFetch<PaginatedResponse<Contract>>("/contracts", { params: { limit: 100 } }),
       ]);
-      setPayments(paymentsData.data);
-      setContracts(contractsData.data);
+      setPayments(payData.data);
+      setContracts(conData.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -45,321 +81,269 @@ export default function PaymentsPage() {
     fetchData();
   }, []);
 
-  const handleOpenModal = (payment?: Payment) => {
-    if (payment) {
-      setEditingPayment(payment);
-      setFormData({
-        contractId: payment.contractId.toString(),
-        amount: payment.amount.toString(),
-        paymentDate: payment.paymentDate.split("T")[0],
-        method: payment.method || "",
-        status: payment.status,
-      });
-    } else {
-      setEditingPayment(null);
-      setFormData({
-        contractId: "",
-        amount: "",
-        paymentDate: new Date().toISOString().split("T")[0],
-        method: "",
-        status: "PAID",
-      });
-    }
+  const del = useConfirmDelete<Payment>("/payments", fetchData);
+
+  const openCreate = () => {
+    setEditing(null);
+    setFormData({ ...EMPTY_FORM, paymentDate: today() });
     setFormError("");
     setShowModal(true);
   };
 
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setEditingPayment(null);
+  const openEdit = (p: Payment) => {
+    setEditing(p);
+    setFormData({
+      contractId: String(p.contractId),
+      amount: String(Math.round(Number(p.amount))),
+      paymentDate: p.paymentDate.split("T")[0],
+      method: p.method ?? "OTHER",
+      status: p.status,
+    });
     setFormError("");
+    setShowModal(true);
+  };
+
+  // Kontrak baru hanya dari yang aktif; saat edit, kontrak aslinya tetap muncul.
+  const contractOptions = useMemo(
+    () => contracts.filter((c) => c.status === "ACTIVE" || c.id === editing?.contractId),
+    [contracts, editing]
+  );
+
+  const handleContractChange = (value: string) => {
+    const contract = contracts.find((c) => String(c.id) === value);
+    setFormData((prev) => ({
+      ...prev,
+      contractId: value,
+      // Isi nominal otomatis dengan tarif kontrak jika masih kosong
+      amount: prev.amount || (contract ? String(Math.round(Number(contract.rentAmount))) : ""),
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError("");
     setSubmitting(true);
-
-    const payload = {
-      contractId: parseInt(formData.contractId),
-      amount: parseFloat(formData.amount),
-      paymentDate: formData.paymentDate,
-      method: formData.method || undefined,
-      status: formData.status,
-    };
-
+    setFormError("");
     try {
-      if (editingPayment) {
-        await apiFetch(`/payments/${editingPayment.id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
+      const body = {
+        amount: Number(formData.amount),
+        paymentDate: formData.paymentDate,
+        method: formData.method,
+        status: formData.status,
+      };
+      if (editing) {
+        await apiFetch(`/payments/${editing.id}`, { method: "PUT", body: JSON.stringify(body) });
       } else {
         await apiFetch("/payments", {
           method: "POST",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...body, contractId: Number(formData.contractId) }),
         });
       }
+      setShowModal(false);
       await fetchData();
-      handleCloseModal();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to save payment");
+      setFormError(err instanceof Error ? err.message : "Gagal menyimpan pembayaran");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus payment ini?")) return;
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return payments.filter((p) => {
+      const unit = p.contract?.property?.code?.toLowerCase() || "";
+      const tenant = p.contract?.tenant?.fullName?.toLowerCase() || "";
+      return !term || unit.includes(term) || tenant.includes(term);
+    });
+  }, [payments, search]);
 
-    try {
-      await apiFetch(`/payments/${id}`, {
-        method: "DELETE",
-      });
-      await fetchData();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete payment");
-    }
-  };
-
-  const getStatusBadge = (status: Payment["status"]) => {
-    const styles = {
-      PAID: "bg-green-100 text-green-800",
-      PARTIAL: "bg-yellow-100 text-yellow-800",
-      LATE: "bg-red-100 text-red-800",
-    };
-    return (
-      <span
-        className={`px-2 py-1 text-xs font-medium rounded-full ${styles[status]}`}
-      >
-        {status}
-      </span>
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    );
-  }
+  const totalCollected = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const paidCount = payments.filter((p) => p.status === "PAID").length;
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Payments</h1>
-        <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-        >
-          + Add Payment
-        </button>
+      <PageHeader
+        title="Keuangan & Pembayaran"
+        subtitle="Kelola arus kas masuk dan status tagihan sewa."
+        actions={<Button onClick={openCreate}>+ Catat Pembayaran</Button>}
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <StatCard label="Total diterima" value={formatIDR(totalCollected)} secondary="Akumulasi kas masuk" />
+        <StatCard label="Pembayaran lunas" value={paidCount} secondary="Berstatus lunas" />
       </div>
 
-      {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error}</p>
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Property
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Tenant
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Amount
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Payment Date
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Method
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {payments.map((payment) => (
-              <tr key={payment.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {payment.contract?.property?.code || "-"}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {payment.contract?.tenant?.fullName || "-"}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  Rp {parseFloat(payment.amount.toString()).toLocaleString("id-ID")}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(payment.paymentDate).toLocaleDateString("id-ID")}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {payment.method || "-"}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  {getStatusBadge(payment.status)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                  <button
-                    onClick={() => handleOpenModal(payment)}
-                    className="text-blue-600 hover:text-blue-900"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(payment.id)}
-                    className="text-red-600 hover:text-red-900"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {payments.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            Belum ada payment. Klik "Add Payment" untuk menambahkan.
-          </div>
-        )}
+      <div className="bg-surface p-4 rounded-xl border border-border">
+        <SearchInput
+          placeholder="Cari berdasarkan kode unit atau nama penyewa..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md my-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {editingPayment ? "Edit Payment" : "Add Payment"}
-            </h2>
-
-            {formError && (
-              <div className="rounded-md bg-red-50 p-4 mb-4">
-                <p className="text-sm text-red-800">{formError}</p>
+      <Table<Payment>
+        data={filtered}
+        keyExtractor={(p) => p.id}
+        loading={loading}
+        emptyMessage={payments.length === 0 ? "Belum ada pembayaran. Klik \"Catat Pembayaran\" untuk menambah." : "Tidak ada pembayaran yang cocok."}
+        columns={[
+          {
+            header: "Unit Properti",
+            accessor: (p) => (
+              <span className="font-medium text-ink text-sm">{p.contract?.property?.code || `#${p.contractId}`}</span>
+            ),
+          },
+          {
+            header: "Penyewa",
+            accessor: (p) => <span className="text-sm text-ink">{p.contract?.tenant?.fullName || "-"}</span>,
+          },
+          {
+            header: "Tanggal",
+            accessor: (p) => <span className="text-sm text-ink-muted">{formatDate(p.paymentDate)}</span>,
+          },
+          {
+            header: "Metode",
+            accessor: (p) => (
+              <span className="text-sm text-ink">{p.method ? METHOD_LABEL[p.method] : "Tidak disebutkan"}</span>
+            ),
+          },
+          {
+            header: "Nominal",
+            align: "right",
+            accessor: (p) => <span className="font-medium text-ink text-sm">{formatIDR(p.amount)}</span>,
+          },
+          {
+            header: "Status",
+            accessor: (p) => <Badge variant={STATUS_META[p.status].variant}>{STATUS_META[p.status].label}</Badge>,
+          },
+          {
+            header: "Aksi",
+            align: "right",
+            accessor: (p) => (
+              <div className="flex items-center justify-end gap-4">
+                <Button variant="link-blue" className="text-sm font-medium" onClick={() => openEdit(p)}>
+                  Edit
+                </Button>
+                <Button variant="link-red" className="text-sm font-medium" onClick={() => del.request(p)}>
+                  Hapus
+                </Button>
               </div>
-            )}
+            ),
+          },
+        ]}
+      />
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Contract *
-                </label>
-                <select
-                  required
-                  value={formData.contractId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, contractId: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select Contract</option>
-                  {contracts.map((contract) => (
-                    <option key={contract.id} value={contract.id}>
-                      {contract.property?.code} - {contract.tenant?.fullName}
-                    </option>
-                  ))}
-                </select>
-              </div>
+      <Modal
+        isOpen={showModal}
+        onClose={() => !submitting && setShowModal(false)}
+        title={editing ? "Edit Pembayaran" : "Catat Pembayaran Sewa"}
+        description="Masukkan data pembayaran sewa dari penyewa."
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <FormField
+            label="Kontrak (unit & penyewa)"
+            required
+            helperText={editing ? "Kontrak tidak bisa diubah. Hapus dan catat ulang bila salah kontrak." : undefined}
+          >
+            <select
+              className={fieldClass}
+              value={formData.contractId}
+              onChange={(e) => handleContractChange(e.target.value)}
+              disabled={!!editing}
+              required
+            >
+              <option value="">Pilih kontrak aktif</option>
+              {contractOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.property?.code} - {c.tenant?.fullName}
+                </option>
+              ))}
+            </select>
+          </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Amount *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  step="1000"
-                  value={formData.amount}
-                  onChange={(e) =>
-                    setFormData({ ...formData, amount: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField label="Nominal (Rp)" required>
+              <input
+                type="number"
+                min={1}
+                className={fieldClass}
+                value={formData.amount}
+                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                placeholder="2400000"
+                required
+              />
+            </FormField>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Payment Date *
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={formData.paymentDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, paymentDate: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Method
-                </label>
-                <input
-                  type="text"
-                  value={formData.method}
-                  onChange={(e) =>
-                    setFormData({ ...formData, method: e.target.value })
-                  }
-                  placeholder="e.g., Transfer Bank, Cash"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Status
-                </label>
-                <select
-                  value={formData.status}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      status: e.target.value as Payment["status"],
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="PAID">PAID</option>
-                  <option value="PARTIAL">PARTIAL</option>
-                  <option value="LATE">LATE</option>
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </form>
+            <FormField label="Tanggal pembayaran" required>
+              <input
+                type="date"
+                className={fieldClass}
+                value={formData.paymentDate}
+                onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
+                required
+              />
+            </FormField>
           </div>
-        </div>
-      )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField label="Metode pembayaran">
+              <select
+                className={fieldClass}
+                value={formData.method}
+                onChange={(e) => setFormData({ ...formData, method: e.target.value as typeof formData.method })}
+              >
+                {Object.entries(METHOD_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField label="Status">
+              <select
+                className={fieldClass}
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as Payment["status"] })}
+              >
+                {Object.entries(STATUS_META).map(([value, meta]) => (
+                  <option key={value} value={value}>
+                    {meta.label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+
+          {formError && (
+            <p role="alert" className="text-sm text-error bg-error-bg border border-error-border rounded-lg px-3 py-2">
+              {formError}
+            </p>
+          )}
+
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-border">
+            <Button type="button" variant="secondary" onClick={() => setShowModal(false)} disabled={submitting}>
+              Batal
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Menyimpan..." : editing ? "Simpan Perubahan" : "Simpan Pembayaran"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={!!del.target}
+        title="Hapus pembayaran?"
+        message={
+          del.target
+            ? `Pembayaran ${formatIDR(del.target.amount)} untuk unit ${del.target.contract?.property?.code ?? `#${del.target.contractId}`} akan dihapus permanen.`
+            : ""
+        }
+        loading={del.busy}
+        error={del.error}
+        onConfirm={del.confirm}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }

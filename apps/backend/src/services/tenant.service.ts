@@ -4,8 +4,8 @@ import { AppError } from "../utils/AppError";
 interface CreateTenantInput {
   fullName: string;
   phone: string;
-  email?: string;
-  identityNumber?: string;
+  email: string;
+  identityNumber: string;
 }
 
 interface UpdateTenantInput {

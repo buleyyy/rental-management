@@ -5,7 +5,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,13 +18,13 @@ export default function LoginPage() {
 
     try {
       const result = await signIn("credentials", {
-        username,
+        email,
         password,
         redirect: false,
       });
 
       if (result?.error) {
-        setError("Username atau password salah");
+        setError("Email atau password salah");
       } else {
         router.push("/admin");
       }
@@ -54,16 +54,17 @@ export default function LoginPage() {
           )}
           <div className="space-y-4">
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                Username
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email
               </label>
               <input
-                id="username"
-                name="username"
-                type="text"
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
                 required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
