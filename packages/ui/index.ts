@@ -8,4 +8,5 @@ export * from "./EmptyState";
 export * from "./Skeleton";
 export * from "./PageHeader";
 export * from "./SearchInput";
+export * from "./FilterBar";
 export * from "./FormField";

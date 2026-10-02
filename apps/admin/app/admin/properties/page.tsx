@@ -11,7 +11,7 @@ import {
   ConfirmDialog,
   Table,
   PageHeader,
-  SearchInput,
+  FilterBar,
   StatCard,
   FormField,
   fieldClass,
@@ -183,38 +183,20 @@ export default function PropertiesPage() {
         </p>
       )}
 
-      <div className="bg-surface p-4 rounded-xl border border-border flex flex-col gap-3">
-        <SearchInput
-          placeholder="Cari kode unit, nama, alamat, atau nama penyewa..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <div className="flex items-center gap-2 overflow-x-auto pt-3 border-t border-border">
-          {STATUS_TABS.map((tab) => {
-            const count = tab.value === "ALL" ? total : properties.filter((p) => p.status === tab.value).length;
-            const active = statusTab === tab.value;
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setStatusTab(tab.value)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex items-center gap-2 transition-colors ${
-                  active ? "bg-primary text-primary-foreground" : "text-ink-muted hover:bg-surface-muted"
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span
-                  className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                    active ? "bg-white/20 text-white" : "bg-surface-muted text-ink-muted"
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <FilterBar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Cari kode unit, nama, alamat, atau nama penyewa...",
+        }}
+        tabs={STATUS_TABS.map((tab) => ({
+          value: tab.value,
+          label: tab.label,
+          count: tab.value === "ALL" ? total : properties.filter((p) => p.status === tab.value).length,
+        }))}
+        activeTab={statusTab}
+        onTabChange={setStatusTab}
+      />
 
       <Table<Property>
         data={filtered}

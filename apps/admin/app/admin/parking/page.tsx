@@ -12,7 +12,7 @@ import {
   PageHeader,
   StatCard,
   FormField,
-  SearchInput,
+  FilterBar,
   fieldClass,
 } from "@rental/ui";
 
@@ -149,13 +149,13 @@ export default function ParkingPage() {
         <StatCard label="Slot tersedia" value={availableCount} secondary="Belum punya penyewa" />
       </div>
 
-      <div className="bg-surface p-4 rounded-xl border border-border">
-        <SearchInput
-          placeholder="Cari berdasarkan nomor plat, penyewa, atau unit..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <FilterBar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Cari nomor plat, penyewa, atau unit...",
+        }}
+      />
 
       <Table<Parking>
         data={filtered}

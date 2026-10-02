@@ -13,7 +13,7 @@ import {
   PageHeader,
   StatCard,
   FormField,
-  SearchInput,
+  FilterBar,
   fieldClass,
 } from "@rental/ui";
 
@@ -172,13 +172,13 @@ export default function PaymentsPage() {
         <StatCard label="Pembayaran lunas" value={paidCount} secondary="Berstatus lunas" />
       </div>
 
-      <div className="bg-surface p-4 rounded-xl border border-border">
-        <SearchInput
-          placeholder="Cari berdasarkan kode unit atau nama penyewa..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <FilterBar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Cari kode unit atau nama penyewa...",
+        }}
+      />
 
       <Table<Payment>
         data={filtered}

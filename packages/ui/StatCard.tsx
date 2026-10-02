@@ -26,7 +26,7 @@ export const StatCard: React.FC<StatCardProps> = ({ label, value, unit, secondar
         {badge ? (
           badge
         ) : icon ? (
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-muted text-ink-muted">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-bg text-accent">
             {icon}
           </span>
         ) : null}

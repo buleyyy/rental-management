@@ -12,7 +12,7 @@ import {
   PageHeader,
   StatCard,
   FormField,
-  SearchInput,
+  FilterBar,
   fieldClass,
 } from "@rental/ui";
 
@@ -135,13 +135,13 @@ export default function ExpensesPage() {
         <StatCard label="Jumlah transaksi" value={expenses.length} secondary="Pengeluaran yang tercatat" />
       </div>
 
-      <div className="bg-surface p-4 rounded-xl border border-border">
-        <SearchInput
-          placeholder="Cari berdasarkan kategori biaya atau kode unit..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <FilterBar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Cari kategori biaya atau kode unit...",
+        }}
+      />
 
       <Table<Expense>
         data={filtered}

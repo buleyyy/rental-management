@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button, fieldClass } from "@rental/ui";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -24,37 +25,43 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError("Email atau password salah");
+        setError("Email atau password salah.");
       } else {
         router.push("/admin");
       }
-    } catch (err) {
-      setError("Terjadi kesalahan, silakan coba lagi");
+    } catch {
+      setError("Terjadi kesalahan. Coba lagi sebentar lagi.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
-        <div>
-          <h2 className="text-center text-3xl font-bold text-gray-900">
-            Rental Management System
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Masuk sebagai admin
-          </p>
+    <main className="min-h-screen flex items-center justify-center bg-background px-4 py-10">
+      <div className="w-full max-w-sm">
+        <div className="flex items-center gap-2.5 mb-6">
+          <div className="h-8 w-8 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center">
+            KM
+          </div>
+          <span className="text-sm font-semibold text-ink">Kontrakan M. Nur</span>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+
+        <div className="bg-surface border border-border rounded-xl p-6">
+          <h1 className="text-lg font-semibold tracking-tight text-ink">Masuk</h1>
+          <p className="text-sm text-ink-muted mt-1">Gunakan akun pemilik untuk membuka panel admin.</p>
+
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate={false}>
+            {error && (
+              <p
+                role="alert"
+                className="text-sm text-error bg-error-bg border border-error-border rounded-lg px-3 py-2"
+              >
+                {error}
+              </p>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="email" className="text-sm font-medium text-ink">
                 Email
               </label>
               <input
@@ -65,34 +72,32 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className={fieldClass}
               />
             </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="password" className="text-sm font-medium text-ink">
                 Password
               </label>
               <input
                 id="password"
                 name="password"
                 type="password"
+                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className={fieldClass}
               />
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? "Memproses..." : "Masuk"}
-          </button>
-        </form>
+            <Button type="submit" size="lg" className="w-full" disabled={loading}>
+              {loading ? "Memproses..." : "Masuk"}
+            </Button>
+          </form>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

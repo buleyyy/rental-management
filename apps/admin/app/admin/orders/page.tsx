@@ -11,7 +11,7 @@ import {
   PageHeader,
   StatCard,
   FormField,
-  SearchInput,
+  FilterBar,
 } from "@rental/ui";
 
 function formatDate(value: string) {
@@ -183,37 +183,16 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <div className="bg-surface p-4 rounded-xl border border-border flex flex-col gap-3">
-        <SearchInput
-          placeholder="Cari nama, email, telepon, atau kode unit..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <div className="flex items-center gap-2 overflow-x-auto pt-3 border-t border-border">
-          {TABS.map((t) => {
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex items-center gap-2 transition-colors ${
-                  active ? "bg-primary text-primary-foreground" : "text-ink-muted hover:bg-surface-muted"
-                }`}
-              >
-                <span>{t.label}</span>
-                <span
-                  className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                    active ? "bg-white/20 text-white" : "bg-surface-muted text-ink-muted"
-                  }`}
-                >
-                  {counts[t.key]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <FilterBar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Cari nama, email, telepon, atau kode unit...",
+        }}
+        tabs={TABS.map((t) => ({ value: t.key, label: t.label, count: counts[t.key] }))}
+        activeTab={tab}
+        onTabChange={setTab}
+      />
 
       <Table<Order>
         data={filtered}

@@ -27,7 +27,7 @@ export const SkeletonTable: React.FC<SkeletonTableProps> = ({ columns, rows = 5 
       {Array.from({ length: rows }).map((_, rowIndex) => (
         <tr key={rowIndex}>
           {Array.from({ length: columns }).map((_, colIndex) => (
-            <td key={colIndex} className="px-4 py-3">
+            <td key={colIndex} className="px-4 py-2.5">
               <Skeleton className="h-4 w-full max-w-[160px]" />
             </td>
           ))}

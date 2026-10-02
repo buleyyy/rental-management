@@ -2,11 +2,11 @@ import React from "react";
 
 /** Gaya seragam untuk <input>, <select>, dan <textarea> di semua form. */
 export const fieldClass =
-  "h-10 px-3 bg-surface border border-border rounded-lg text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-surface-muted disabled:text-ink-muted disabled:cursor-not-allowed w-full";
+  "h-10 px-3 bg-surface border border-border-strong rounded-lg text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent disabled:bg-surface-muted disabled:text-ink-muted disabled:cursor-not-allowed w-full";
 
 /** Varian untuk <textarea> (tinggi mengikuti rows). */
 export const textareaClass =
-  "p-3 bg-surface border border-border rounded-lg text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-primary w-full";
+  "p-3 bg-surface border border-border-strong rounded-lg text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent w-full";
 
 export interface FormFieldProps {
   label: string;

@@ -12,7 +12,7 @@ import {
   PageHeader,
   StatCard,
   FormField,
-  SearchInput,
+  FilterBar,
   fieldClass,
 } from "@rental/ui";
 
@@ -119,13 +119,13 @@ export default function TenantsPage() {
         />
       </div>
 
-      <div className="bg-surface p-4 rounded-xl border border-border">
-        <SearchInput
-          placeholder="Cari berdasarkan nama, telepon, email, atau nomor identitas..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <FilterBar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Cari nama, telepon, email, atau nomor identitas...",
+        }}
+      />
 
       <Table<Tenant>
         data={filtered}

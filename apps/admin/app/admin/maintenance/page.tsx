@@ -13,7 +13,7 @@ import {
   PageHeader,
   StatCard,
   FormField,
-  SearchInput,
+  FilterBar,
   fieldClass,
   textareaClass,
 } from "@rental/ui";
@@ -140,13 +140,13 @@ export default function MaintenancePage() {
         <StatCard label="Selesai" value={completedCount} secondary="Sudah tuntas" />
       </div>
 
-      <div className="bg-surface p-4 rounded-xl border border-border">
-        <SearchInput
-          placeholder="Cari berdasarkan deskripsi kendala atau kode unit..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <FilterBar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Cari deskripsi kendala atau kode unit...",
+        }}
+      />
 
       <Table<Maintenance>
         data={filtered}

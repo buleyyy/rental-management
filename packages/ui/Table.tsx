@@ -55,7 +55,7 @@ export function Table<T>({
               <SkeletonTable columns={columns.length} rows={skeletonRows} />
             ) : data.length > 0 ? (
               data.map((item) => (
-                <tr key={keyExtractor(item)} className="hover:bg-surface-muted/60 transition-colors">
+                <tr key={keyExtractor(item)} className="hover:bg-surface-muted transition-colors">
                   {columns.map((col, colIndex) => {
                     let content: React.ReactNode = null;
                     if (typeof col.accessor === "function") {
@@ -67,7 +67,7 @@ export function Table<T>({
                     return (
                       <td
                         key={colIndex}
-                        className={`px-4 py-3 whitespace-nowrap text-sm text-ink ${ALIGN[col.align ?? "left"]} ${col.className || ""}`}
+                        className={`px-4 py-2.5 whitespace-nowrap text-sm text-ink ${ALIGN[col.align ?? "left"]} ${col.className || ""}`}
                       >
                         {content}
                       </td>
